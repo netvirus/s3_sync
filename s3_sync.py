@@ -4,6 +4,7 @@ import requests
 import yaml
 import time
 import sys
+import hashlib
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 
 
@@ -79,6 +80,10 @@ async def copy_object_alternative(s3_client_source, s3_client_target, source_buc
 
 async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value,
                            dry_run=False):
+    # Проверка включена ли пара бакетов
+    if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
+        return f"Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false"
+
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
     target_endpoint = f"{target_bucket['endpoint-url']}:{target_bucket['port']}"
 
@@ -154,12 +159,24 @@ async def sync_buckets(config, dry_run=False):
     for result in results:
         telegram_enabled = config['telegram'].get('enabled', True)
         print(result)
-        send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], result, telegram_enabled)
+        send_telegram_message(config['telegram'].get('bot_token'), config['telegram'].get('chat_id'), result,
+                              telegram_enabled)
+
+
+def calculate_file_hash(file_path):
+    hasher = hashlib.md5()
+    with open(file_path, 'rb') as file:
+        buffer = file.read()
+        hasher.update(buffer)
+    return hasher.hexdigest()
 
 
 if __name__ == '__main__':
     dry_run = '--dry-run' in sys.argv
-    config = load_config()
+    config_path = 'config.yaml'
+    config = load_config(config_path)
+    config_hash = calculate_file_hash(config_path)
+
     try:
         validate_bucket_pairs(config)
         print("Bucket pairs to be synchronized:")
@@ -167,6 +184,14 @@ if __name__ == '__main__':
         for pair_name, pair_buckets in pairs.items():
             print(f"{pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']}")
         while True:
+            # Проверка изменения хэш суммы конфигурационного файла
+            new_config_hash = calculate_file_hash(config_path)
+            if new_config_hash != config_hash:
+                print("Configuration file changed, reloading...")
+                config = load_config(config_path)
+                validate_bucket_pairs(config)
+                config_hash = new_config_hash
+
             asyncio.run(sync_buckets(config, dry_run))
             time.sleep(config['sync']['interval'])
     except Exception as e:

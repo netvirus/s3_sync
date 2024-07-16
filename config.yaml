@@ -18,7 +18,8 @@ buckets:
         endpoint-url: http://192.168.100.151
         bucket-name: src-bucket
         port: 9000
-        managed_s3_mark: true
+        enabled: false
+        managed_s3_mark: false
       - name: yandex-s3-test-bucket
         access-key: dstadmin
         secret-key: dstpassword
@@ -32,6 +33,7 @@ buckets:
         endpoint-url: http://192.168.100.151
         bucket-name: src-test-bucket
         port: 9002
+        enabled: true
         managed_s3_mark: true
       - name: local2-s3-test-bucket
         access-key: dstadmin
