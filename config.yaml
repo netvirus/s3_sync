@@ -1,0 +1,41 @@
+telegram:
+  bot_token:
+  chat_id:
+  enabled: false
+
+sync:
+  interval: 60  # Интервал в секундах
+  check_buckets: false  # Добавляем переменную для включения/выключения проверки существования бакетов
+  metadata_key: "synced-to-backup"
+  metadata_value: "1"
+
+buckets:
+  pair:
+    first_buckets:
+      - name: seaweed-s3-test-bucket
+        access-key: srcadmin
+        secret-key: srcpassword
+        endpoint-url: http://192.168.100.151
+        bucket-name: src-bucket
+        port: 9000
+        managed_s3_mark: true
+      - name: yandex-s3-test-bucket
+        access-key: dstadmin
+        secret-key: dstpassword
+        endpoint-url: http://192.168.100.151
+        bucket-name: dst-bucket
+        port: 9001
+    second_buckets:
+      - name: local-s3-test-bucket
+        access-key: srcadmin
+        secret-key: srcpassword
+        endpoint-url: http://192.168.100.151
+        bucket-name: src-test-bucket
+        port: 9002
+        managed_s3_mark: true
+      - name: local2-s3-test-bucket
+        access-key: dstadmin
+        secret-key: dstpassword
+        endpoint-url: http://192.168.100.151
+        bucket-name: dst-test-bucket
+        port: 9003
