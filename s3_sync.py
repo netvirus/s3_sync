@@ -91,12 +91,14 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
             's3',
             aws_access_key_id=source_bucket['access-key'],
             aws_secret_access_key=source_bucket['secret-key'],
-            endpoint_url=source_endpoint
+            endpoint_url=source_endpoint,
+            verify=False
     ) as s3_client_source, session.client(
         's3',
         aws_access_key_id=target_bucket['access-key'],
         aws_secret_access_key=target_bucket['secret-key'],
-        endpoint_url=target_endpoint
+        endpoint_url=target_endpoint,
+        verify=False
     ) as s3_client_target:
 
         source_bucket_name = source_bucket['bucket-name']
