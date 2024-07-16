@@ -6,6 +6,10 @@ COPY requirements.txt requirements.txt
 
 RUN pip install -r requirements.txt
 
+COPY ca_b2serv.crt /usr/local/share/ca-certificates/ca_b2serv.crt
+
+RUN update-ca-certificates
+
 COPY . .
 
 # Команда запуска по умолчанию (можно запустить как сервис, так и утилиту)
