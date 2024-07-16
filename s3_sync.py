@@ -81,8 +81,8 @@ async def copy_object_alternative(s3_client_source, s3_client_target, source_buc
 async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value,
                            dry_run=False):
     # Проверка включена ли пара бакетов
-    if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
-        return f"Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false"
+    if not source_bucket.get('enabled', True):
+        return f"[ Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false ]"
 
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
     target_endpoint = f"{target_bucket['endpoint-url']}:{target_bucket['port']}"
@@ -127,8 +127,8 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
 
                 if metadata.get(metadata_key) != metadata_value:
                     if dry_run:
-                        print(f"Dry run: Would copy {key} from {source_bucket_name} to {target_bucket_name}")
-                        print(f"Dry run: Would update metadata of {key} in {source_bucket_name}")
+                        print(f"[ Dry run: Would copy {key} from {source_bucket_name} to {target_bucket_name} ]")
+                        print(f"[ Dry run: Would update metadata of {key} in {source_bucket_name} ]")
                     else:
                         tasks.append(copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name,
                                                              target_bucket_name, key, metadata_key, metadata_value))
@@ -139,9 +139,9 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
                     await asyncio.gather(*tasks)
                 except ClientError as e:
                     return f"Error during copying objects from {source_bucket_name} to {target_bucket_name}: {e}"
-            return f"Synchronization completed for bucket pair: {source_bucket_name} -> {target_bucket_name}: {copied_count} objects copied."
+            return f"[ Synchronization completed for bucket pair: {source_bucket_name} -> {target_bucket_name}: {copied_count} objects copied. ]"
         else:
-            return f"No one objects found for synchronization in source bucket: {source_bucket_name}"
+            return f"[ No one objects found for synchronization in source bucket: {source_bucket_name} ]"
 
 
 async def sync_buckets(config, dry_run=False):
@@ -187,7 +187,7 @@ if __name__ == '__main__':
             # Проверка изменения хэш суммы конфигурационного файла
             new_config_hash = calculate_file_hash(config_path)
             if new_config_hash != config_hash:
-                print("Configuration file changed, reloading...")
+                print("[ Configuration file changed, reloading... ]")
                 config = load_config(config_path)
                 validate_bucket_pairs(config)
                 config_hash = new_config_hash
