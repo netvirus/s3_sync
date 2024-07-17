@@ -5,18 +5,18 @@ import yaml
 import time
 import sys
 import hashlib
+from datetime import datetime
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
-from colorama import Fore, Style, init
 
-# Инициализация colorama
-init(autoreset=True)
+# Функция для вывода сообщений с добавлением даты и времени
+def log_message(message):
+    print(f"[ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} ] {message}")
 
 # Загружаем конфигурацию из файла
 def load_config(config_path='config.yaml'):
-    print(f"{Fore.GREEN}[ Loading configuration from {config_path} ]")
+    log_message(f"Loading configuration from {config_path}")
     with open(config_path, 'r', encoding='utf-8') as file:
         return yaml.safe_load(file)
-
 
 # Отправляем сообщение в Telegram
 def send_telegram_message(token, chat_id, message, enabled):
@@ -28,36 +28,34 @@ def send_telegram_message(token, chat_id, message, enabled):
         response = requests.post(url, data=data)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
-        print(f"{Fore.RED}[ Error sending message to Telegram: {e} ]")
-
+        log_message(f"Error sending message to Telegram: {e}")
 
 # Валидируем пары бакетов в конфигурации
 def validate_bucket_pairs(config):
     if 'buckets' not in config or 'pair' not in config['buckets']:
-        raise ValueError(f"{Fore.RED}[ Configuration must contain 'buckets' and 'pair' keys. ]")
+        raise ValueError("Configuration must contain 'buckets' and 'pair' keys.")
 
     pairs = config['buckets']['pair']
     valid_pairs = {}
     for pair_name, pair_buckets in pairs.items():
         if len(pair_buckets) != 2:
-            print(f"{Fore.LIGHTBLUE_EX}[ Skipping pair {pair_name} because it must contain exactly two buckets. ]")
+            log_message(f"Skipping pair {pair_name} because it must contain exactly two buckets.")
             continue
         if not pair_buckets[0].get('enabled', True) or not pair_buckets[1].get('enabled', True):
-            print(f"{Fore.LIGHTBLUE_EX}[ Skipping pair {pair_name} because one or both buckets are disabled. ]")
+            log_message(f"Skipping pair {pair_name} because one or both buckets are disabled.")
             continue
         for bucket in pair_buckets:
             if 'name' not in bucket or 'access-key' not in bucket or 'secret-key' not in bucket or 'endpoint-url' not in bucket or 'port' not in bucket or 'bucket-name' not in bucket:
-                print(f"{Fore.LIGHTBLUE_EX}[ Skipping pair {pair_name} because bucket {bucket} is missing required fields. ]")
+                log_message(f"Skipping pair {pair_name} because bucket {bucket} is missing required fields.")
                 break
         else:
             valid_pairs[pair_name] = pair_buckets
 
     if not valid_pairs:
-        print(f"{Fore.RED}[ No valid bucket pairs found in configuration. ]")
+        log_message("No valid bucket pairs found in configuration.")
 
     config['buckets']['pair'] = valid_pairs
-    print(f"{Fore.GREEN}[ All bucket pairs are correctly specified. Total pairs found: {len(valid_pairs)} ]")
-
+    log_message(f"All bucket pairs are correctly specified. Total pairs found: {len(valid_pairs)}")
 
 # Проверяем существование бакета
 async def check_bucket_exists(s3_client, bucket_name):
@@ -66,16 +64,15 @@ async def check_bucket_exists(s3_client, bucket_name):
         return True
     except ClientError as e:
         if e.response['Error']['Code'] == '404':
-            print(f"{Fore.RED}[ Bucket {bucket_name} does not exist. ]")
+            log_message(f"Bucket {bucket_name} does not exist.")
         else:
-            print(f"{Fore.RED}[ Error checking bucket {bucket_name}: {e} ]")
+            log_message(f"Error checking bucket {bucket_name}: {e}")
         return False
-
 
 # Копируем объект из исходного бакета в целевой
 async def copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key, metadata_key, metadata_value):
     try:
-        print(f"{Fore.YELLOW}[ Copying {key} from {source_bucket_name} to {target_bucket_name} ]")
+        log_message(f"Copying {key} from {source_bucket_name} to {target_bucket_name}")
         # Загрузка объекта из исходного бакета
         obj = await s3_client_source.get_object(Bucket=source_bucket_name, Key=key)
         object_data = await obj['Body'].read()
@@ -91,18 +88,17 @@ async def copy_object_alternative(s3_client_source, s3_client_target, source_buc
             Metadata={metadata_key: metadata_value},
             MetadataDirective='REPLACE'
         )
-        print(f"{Fore.GREEN}[ Successfully copied {key} from {source_bucket_name} to {target_bucket_name} and updated metadata ]")
+        log_message(f"Successfully copied {key} from {source_bucket_name} to {target_bucket_name} and updated metadata")
 
     except ClientError as e:
-        print(f"{Fore.RED}[ Error copying {key} from {source_bucket_name} to {target_bucket_name}: {e} ]")
-
+        log_message(f"Error copying {key} from {source_bucket_name} to {target_bucket_name}: {e}")
 
 # Синхронизация пары бакетов
 async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value, dry_run=False):
     # Проверка включена ли пара бакетов
     if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
-        message = f"{Fore.LIGHTBLUE_EX}[ Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false ]"
-        print(message)
+        message = f"Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false"
+        log_message(message)
         return message
 
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
@@ -127,42 +123,42 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
 
         if check_exists:
             if not await check_bucket_exists(s3_client_source, source_bucket_name):
-                message = f"{Fore.RED}[ Source bucket {source_bucket_name} does not exist. ]"
-                print(message)
+                message = f"Source bucket {source_bucket_name} does not exist."
+                log_message(message)
                 return message
             if not await check_bucket_exists(s3_client_target, target_bucket_name):
-                message = f"{Fore.RED}[ Target bucket {target_bucket_name} does not exist. ]"
-                print(message)
+                message = f"Target bucket {target_bucket_name} does not exist."
+                log_message(message)
                 return message
 
         try:
-            print(f"{Fore.GREEN}[ Listing objects in source bucket: {source_bucket_name} ]")
+            log_message(f"Listing objects in source bucket: {source_bucket_name}")
             response = await s3_client_source.list_objects_v2(Bucket=source_bucket_name)
             objects = response.get('Contents', [])
-            print(f"{Fore.GREEN}[ Found {len(objects)} objects in source bucket: {source_bucket_name} ]")
+            log_message(f"Found [{len(objects)}] objects in source bucket: {source_bucket_name}")
         except ClientError as e:
-            message = f"{Fore.RED}[ Error listing objects in source bucket {source_bucket_name}: {e} ]"
-            print(message)
+            message = f"Error listing objects in source bucket {source_bucket_name}: {e}"
+            log_message(message)
             return message
 
         if objects:
             tasks = []
             copied_count = 0
-            print(f"{Fore.GREEN}[ Getting metadata for Objects in source bucket: {source_bucket_name} ]")
+            log_message(f"Getting metadata for Objects in source bucket: {source_bucket_name}")
             for obj in objects:
                 key = obj['Key']
                 try:
                     metadata_response = await s3_client_source.head_object(Bucket=source_bucket_name, Key=key)
                     metadata = metadata_response['Metadata']
                 except ClientError as e:
-                    message = f"{Fore.RED}[ Error getting metadata for {key} in source bucket {source_bucket_name}: {e} ]"
-                    print(message)
+                    message = f"Error getting metadata for {key} in source bucket {source_bucket_name}: {e}"
+                    log_message(message)
                     return message
 
                 if metadata.get(metadata_key) != metadata_value:
                     if dry_run:
-                        print(f"{Fore.YELLOW}[ Dry run: Would copy {key} from {source_bucket_name} to {target_bucket_name} ]")
-                        print(f"{Fore.YELLOW}[ Dry run: Would update metadata of {key} in {source_bucket_name} ]")
+                        log_message(f"Dry run: Would copy {key} from {source_bucket_name} to {target_bucket_name}")
+                        log_message(f"Dry run: Would update metadata of {key} in {source_bucket_name}")
                     else:
                         tasks.append(copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key, metadata_key, metadata_value))
                         copied_count += 1
@@ -171,13 +167,12 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
                 try:
                     await asyncio.gather(*tasks)
                 except ClientError as e:
-                    message = f"{Fore.RED}[ Error during copying objects from {source_bucket_name} to {target_bucket_name}: {e} ]"
-                    print(message)
+                    message = f"Error during copying objects from {source_bucket_name} to {target_bucket_name}: {e}"
+                    log_message(message)
                     return message
-            return f"{Fore.GREEN}[ Synchronization completed for bucket pair: {source_bucket_name} -> {target_bucket_name}: {copied_count} objects copied. ]"
+            return f"Synchronization completed for bucket pair: {source_bucket_name} -> {target_bucket_name}: {copied_count} objects copied."
         else:
-            return f"{Fore.GREEN}[ No objects found for synchronization in source bucket: {source_bucket_name} ]"
-
+            return f"No one objects found for synchronization in source bucket: {source_bucket_name}"
 
 # Синхронизация всех пар бакетов
 async def sync_buckets(config, dry_run=False):
@@ -193,7 +188,7 @@ async def sync_buckets(config, dry_run=False):
     results = await asyncio.gather(*tasks)
     for result in results:
         telegram_enabled = config['telegram'].get('enabled', True)
-        print(result)
+        log_message(result)
         send_telegram_message(config['telegram'].get('bot_token'), config['telegram'].get('chat_id'), result, telegram_enabled)
 
 
@@ -213,7 +208,7 @@ def print_config_info(config):
     total_pairs = len(pairs)
     enabled_pairs = sum(1 for pair in pairs.values() if pair[0].get('enabled', True) and pair[1].get('enabled', True))
     disabled_pairs = total_pairs - enabled_pairs
-    print(f"{Fore.GREEN}[ Config reloaded. Interval: {interval} seconds. Total pairs: {total_pairs}, Enabled pairs: {enabled_pairs}, Disabled pairs: {disabled_pairs} ]")
+    log_message(f"[ Config reloaded. Interval: {interval} seconds. Total pairs: [{total_pairs}], Enabled pairs: [{enabled_pairs}], Disabled pairs: [{disabled_pairs}] ]")
 
 
 if __name__ == '__main__':
@@ -224,27 +219,27 @@ if __name__ == '__main__':
 
     try:
         validate_bucket_pairs(config)
-        print(f"{Fore.GREEN}[ Bucket pairs to be synchronized: ]")
+        log_message(f"[ Bucket pairs to be synchronized: ]")
         pairs = config['buckets']['pair']
         for pair_name, pair_buckets in pairs.items():
-            print(f"{Fore.GREEN}[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
+            log_message(f"[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
 
         while True:
             # Проверка изменения хэш суммы конфигурационного файла
             new_config_hash = calculate_file_hash(config_path)
             if new_config_hash != config_hash:
-                print(f"{Fore.GREEN}[ Configuration file changed, reloading... ]")
+                log_message(f"[ Configuration file changed, reloading... ]")
                 config = load_config(config_path)
                 validate_bucket_pairs(config)
                 config_hash = new_config_hash
                 print_config_info(config)  # Вывод информации о конфигурации
 
-            print(f"{Fore.GREEN}[ Starting synchronization cycle... ]")
+            log_message(f"[ Starting synchronization cycle... ]")
             asyncio.run(sync_buckets(config, dry_run))
-            print(f"{Fore.GREEN}[ Synchronization cycle completed. ]")
+            log_message(f"[ Synchronization cycle completed. ]")
             time.sleep(config['sync']['interval'])
     except Exception as e:
         telegram_enabled = config['telegram'].get('enabled', True)
         if 'telegram' in config and 'bot_token' in config['telegram'] and 'chat_id' in config['telegram']:
             send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], f"Error: {e}", telegram_enabled)
-        print(f"{Fore.RED}[ Error: {e} ]")
+        log_message(f"[ Error: {e} ]")

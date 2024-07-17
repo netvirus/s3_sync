@@ -1,6 +1,5 @@
 aioboto3
 requests
 pyyaml
-colorama
 botocore
 
