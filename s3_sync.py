@@ -148,10 +148,10 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
         if objects:
             tasks = []
             copied_count = 0
+            print(f"{Fore.GREEN}[ Getting metadata for Objects in source bucket: {source_bucket_name} ]")
             for obj in objects:
                 key = obj['Key']
                 try:
-                    print(f"{Fore.GREEN}[ Getting metadata for {key} in source bucket: {source_bucket_name} ]")
                     metadata_response = await s3_client_source.head_object(Bucket=source_bucket_name, Key=key)
                     metadata = metadata_response['Metadata']
                 except ClientError as e:
@@ -230,7 +230,6 @@ if __name__ == '__main__':
             print(f"{Fore.GREEN}[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
 
         while True:
-            print(f"{Fore.GREEN}[ Checking configuration file hash... ]")
             # Проверка изменения хэш суммы конфигурационного файла
             new_config_hash = calculate_file_hash(config_path)
             if new_config_hash != config_hash:
