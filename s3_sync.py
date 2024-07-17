@@ -191,8 +191,7 @@ async def sync_buckets(config, dry_run=False):
     for result in results:
         telegram_enabled = config['telegram'].get('enabled', True)
         print(result)
-        send_telegram_message(config['telegram'].get('bot_token'),
-                              config['telegram'].get('chat_id'], result, telegram_enabled)
+        send_telegram_message(config['telegram'].get('bot_token'), config['telegram'].get('chat_id'), result, telegram_enabled)
 
         # Рассчитываем хэш сумму файла
         def calculate_file_hash(file_path):
