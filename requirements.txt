@@ -1,3 +1,6 @@
 aioboto3
-pyyaml
 requests
+pyyaml
+colorama
+botocore
+
