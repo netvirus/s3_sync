@@ -219,7 +219,7 @@ if __name__ == '__main__':
 
     try:
         validate_bucket_pairs(config)
-        log_message(f"[ Bucket pairs to be synchronized: ]")
+        log_message(f"Bucket pairs to be synchronized:")
         pairs = config['buckets']['pair']
         for pair_name, pair_buckets in pairs.items():
             log_message(f"[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
@@ -228,15 +228,15 @@ if __name__ == '__main__':
             # Проверка изменения хэш суммы конфигурационного файла
             new_config_hash = calculate_file_hash(config_path)
             if new_config_hash != config_hash:
-                log_message(f"[ Configuration file changed, reloading... ]")
+                log_message(f"Configuration file changed, reloading...")
                 config = load_config(config_path)
                 validate_bucket_pairs(config)
                 config_hash = new_config_hash
                 print_config_info(config)  # Вывод информации о конфигурации
 
-            log_message(f"[ Starting synchronization cycle... ]")
+            log_message(f"Starting synchronization cycle...")
             asyncio.run(sync_buckets(config, dry_run))
-            log_message(f"[ Synchronization cycle completed. ]")
+            log_message(f"Synchronization cycle completed.")
             time.sleep(config['sync']['interval'])
     except Exception as e:
         telegram_enabled = config['telegram'].get('enabled', True)
