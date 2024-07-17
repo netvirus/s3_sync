@@ -8,11 +8,13 @@ import hashlib
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 
 
+# Загружаем конфигурацию из файла
 def load_config(config_path='config.yaml'):
     with open(config_path, 'r', encoding='utf-8') as file:
         return yaml.safe_load(file)
 
 
+# Отправляем сообщение в Telegram
 def send_telegram_message(token, chat_id, message, enabled):
     if not enabled:
         return
@@ -25,6 +27,7 @@ def send_telegram_message(token, chat_id, message, enabled):
         print(f"Error sending message to Telegram: {e}")
 
 
+# Валидируем пары бакетов в конфигурации
 def validate_bucket_pairs(config):
     if 'buckets' not in config or 'pair' not in config['buckets']:
         raise ValueError("Configuration must contain 'buckets' and 'pair' keys.")
@@ -42,6 +45,7 @@ def validate_bucket_pairs(config):
     print(f"All bucket pairs are correctly specified. Total pairs found: {pair_count}")
 
 
+# Проверяем существование бакета
 async def check_bucket_exists(s3_client, bucket_name):
     try:
         await s3_client.head_bucket(Bucket=bucket_name)
@@ -54,6 +58,7 @@ async def check_bucket_exists(s3_client, bucket_name):
         return False
 
 
+# Копируем объект из исходного бакета в целевой
 async def copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key,
                                   metadata_key, metadata_value):
     try:
@@ -78,11 +83,12 @@ async def copy_object_alternative(s3_client_source, s3_client_target, source_buc
         raise
 
 
+# Синхронизация пары бакетов
 async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value,
                            dry_run=False):
     # Проверка включена ли пара бакетов
-    if not source_bucket.get('enabled', True):
-        return f"[ Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false ]"
+    if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
+        return f"Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false"
 
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
     target_endpoint = f"{target_bucket['endpoint-url']}:{target_bucket['port']}"
@@ -92,13 +98,13 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
             aws_access_key_id=source_bucket['access-key'],
             aws_secret_access_key=source_bucket['secret-key'],
             endpoint_url=source_endpoint,
-            verify=False
+            verify=False  # Отключение проверки SSL-сертификатов
     ) as s3_client_source, session.client(
         's3',
         aws_access_key_id=target_bucket['access-key'],
         aws_secret_access_key=target_bucket['secret-key'],
         endpoint_url=target_endpoint,
-        verify=False
+        verify=False  # Отключение проверки SSL-сертификатов
     ) as s3_client_target:
 
         source_bucket_name = source_bucket['bucket-name']
@@ -146,6 +152,7 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
             return f"[ No one objects found for synchronization in source bucket: {source_bucket_name} ]"
 
 
+# Синхронизация всех пар бакетов
 async def sync_buckets(config, dry_run=False):
     session = aioboto3.Session()
     pairs = config['buckets']['pair']
@@ -165,12 +172,23 @@ async def sync_buckets(config, dry_run=False):
                               telegram_enabled)
 
 
+# Рассчитываем хэш сумму файла
 def calculate_file_hash(file_path):
     hasher = hashlib.md5()
     with open(file_path, 'rb') as file:
         buffer = file.read()
         hasher.update(buffer)
     return hasher.hexdigest()
+
+
+# Выводим информацию о конфигурации
+def print_config_info(config):
+    interval = config['sync']['interval']
+    pairs = config['buckets']['pair']
+    total_pairs = len(pairs)
+    enabled_pairs = sum(1 for pair in pairs.values() if pair[0].get('enabled', True) and pair[1].get('enabled', True))
+    disabled_pairs = total_pairs - enabled_pairs
+    print(f"[ Config reloaded. Interval: {interval} seconds. Total pairs: {total_pairs}, Enabled pairs: {enabled_pairs}, Disabled pairs: {disabled_pairs} ]")
 
 
 if __name__ == '__main__':
@@ -193,6 +211,7 @@ if __name__ == '__main__':
                 config = load_config(config_path)
                 validate_bucket_pairs(config)
                 config_hash = new_config_hash
+                print_config_info(config)  # Вывод информации о конфигурации
 
             asyncio.run(sync_buckets(config, dry_run))
             time.sleep(config['sync']['interval'])
