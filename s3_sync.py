@@ -213,6 +213,10 @@ if __name__ == '__main__':
         pairs = config['buckets']['pair']
         for pair_name, pair_buckets in pairs.items():
             print(f"[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         while True:
             # Проверка изменения хэш суммы конфигурационного файла
             new_config_hash = calculate_file_hash(config_path)
@@ -224,12 +228,11 @@ if __name__ == '__main__':
                 print_config_info(config)  # Вывод информации о конфигурации
 
             print("[ Starting synchronization cycle... ]")
-            asyncio.run(sync_buckets(config, dry_run))
+            loop.run_until_complete(sync_buckets(config, dry_run))
             print("[ Synchronization cycle completed. ]")
             time.sleep(config['sync']['interval'])
     except Exception as e:
         telegram_enabled = config['telegram'].get('enabled', True)
         if 'telegram' in config and 'bot_token' in config['telegram'] and 'chat_id' in config['telegram']:
-            send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], f"Error: {e}",
-                                  telegram_enabled)
+            send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], f"Error: {e}", telegram_enabled)
         print(f"[ Error: {e} ]")
