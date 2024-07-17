@@ -33,26 +33,16 @@ def validate_bucket_pairs(config):
         raise ValueError("[ Configuration must contain 'buckets' and 'pair' keys. ]")
 
     pairs = config['buckets']['pair']
-    valid_pairs = {}
+    pair_count = 0
     for pair_name, pair_buckets in pairs.items():
         if len(pair_buckets) != 2:
-            print(f"[ Skipping pair {pair_name} because it must contain exactly two buckets. ]")
-            continue
-        if not pair_buckets[0].get('enabled', True) or not pair_buckets[1].get('enabled', True):
-            print(f"[ Skipping pair {pair_name} because one or both buckets are disabled. ]")
-            continue
+            raise ValueError(f"[ Bucket pair {pair_name} must contain exactly two buckets. ]")
         for bucket in pair_buckets:
             if 'name' not in bucket or 'access-key' not in bucket or 'secret-key' not in bucket or 'endpoint-url' not in bucket or 'port' not in bucket or 'bucket-name' not in bucket:
-                print(f"[ Skipping pair {pair_name} because bucket {bucket} is missing required fields. ]")
-                break
-        else:
-            valid_pairs[pair_name] = pair_buckets
+                raise ValueError(f"[ Bucket {bucket} in pair {pair_name} is missing required fields. ]")
+        pair_count += 1
 
-    if not valid_pairs:
-        print("[ No valid bucket pairs found in configuration. ]")
-
-    config['buckets']['pair'] = valid_pairs
-    print(f"[ All bucket pairs are correctly specified. Total pairs found: {len(valid_pairs)} ]")
+    print(f"[ All bucket pairs are correctly specified. Total pairs found: {pair_count} ]")
 
 
 # Проверяем существование бакета
@@ -69,8 +59,7 @@ async def check_bucket_exists(s3_client, bucket_name):
 
 
 # Копируем объект из исходного бакета в целевой
-async def copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key,
-                                  metadata_key, metadata_value):
+async def copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key, metadata_key, metadata_value):
     try:
         print(f"[ Copying {key} from {source_bucket_name} to {target_bucket_name} ]")
         # Загрузка объекта из исходного бакета
@@ -95,8 +84,13 @@ async def copy_object_alternative(s3_client_source, s3_client_target, source_buc
 
 
 # Синхронизация пары бакетов
-async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value,
-                           dry_run=False):
+async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, metadata_key, metadata_value, dry_run=False):
+    # Проверка включена ли пара бакетов
+    if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
+        message = f"[ Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false ]"
+        print(message)
+        return message
+
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
     target_endpoint = f"{target_bucket['endpoint-url']}:{target_bucket['port']}"
 
@@ -156,8 +150,7 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
                         print(f"[ Dry run: Would copy {key} from {source_bucket_name} to {target_bucket_name} ]")
                         print(f"[ Dry run: Would update metadata of {key} in {source_bucket_name} ]")
                     else:
-                        tasks.append(copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name,
-                                                             target_bucket_name, key, metadata_key, metadata_value))
+                        tasks.append(copy_object_alternative(s3_client_source, s3_client_target, source_bucket_name, target_bucket_name, key, metadata_key, metadata_value))
                         copied_count += 1
 
             if tasks:
@@ -176,73 +169,67 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
 async def sync_buckets(config, dry_run=False):
     session = aioboto3.Session()
     pairs = config['buckets']['pair']
-    if not pairs:
-        print("[ No valid bucket pairs to synchronize. ]")
-        return
     tasks = []
     metadata_key = config['sync'].get('metadata_key', 'synced-to-backup')
     metadata_value = config['sync'].get('metadata_value', '1')
     for pair_name, pair_buckets in pairs.items():
         check_exists = config['sync'].get('check_bucket_exists', True)
-        tasks.append(
-            sync_bucket_pair(session, pair_buckets[0], pair_buckets[1], check_exists, metadata_key, metadata_value,
-                             dry_run))
+        tasks.append(sync_bucket_pair(session, pair_buckets[0], pair_buckets[1], check_exists, metadata_key, metadata_value, dry_run))
     results = await asyncio.gather(*tasks)
     for result in results:
         telegram_enabled = config['telegram'].get('enabled', True)
         print(result)
         send_telegram_message(config['telegram'].get('bot_token'), config['telegram'].get('chat_id'), result, telegram_enabled)
 
-        # Рассчитываем хэш сумму файла
-        def calculate_file_hash(file_path):
-            hasher = hashlib.md5()
-            with open(file_path, 'rb') as file:
-                buffer = file.read()
-                hasher.update(buffer)
-            return hasher.hexdigest()
 
-        # Выводим информацию о конфигурации
-        def print_config_info(config):
-            interval = config['sync']['interval']
-            pairs = config['buckets']['pair']
-            total_pairs = len(pairs)
-            enabled_pairs = sum(
-                1 for pair in pairs.values() if pair[0].get('enabled', True) and pair[1].get('enabled', True))
-            disabled_pairs = total_pairs - enabled_pairs
-            print(
-                f"[ Config reloaded. Interval: {interval} seconds. Total pairs: {total_pairs}, Enabled pairs: {enabled_pairs}, Disabled pairs: {disabled_pairs} ]")
+# Рассчитываем хэш сумму файла
+def calculate_file_hash(file_path):
+    hasher = hashlib.md5()
+    with open(file_path, 'rb') as file:
+        buffer = file.read()
+        hasher.update(buffer)
+    return hasher.hexdigest()
 
-        if __name__ == '__main__':
-            dry_run = '--dry-run' in sys.argv
-            config_path = 'config.yaml'
-            config = load_config(config_path)
-            config_hash = calculate_file_hash(config_path)
 
-            try:
+# Выводим информацию о конфигурации
+def print_config_info(config):
+    interval = config['sync']['interval']
+    pairs = config['buckets']['pair']
+    total_pairs = len(pairs)
+    enabled_pairs = sum(1 for pair in pairs.values() if pair[0].get('enabled', True) and pair[1].get('enabled', True))
+    disabled_pairs = total_pairs - enabled_pairs
+    print(f"[ Config reloaded. Interval: {interval} seconds. Total pairs: {total_pairs}, Enabled pairs: {enabled_pairs}, Disabled pairs: {disabled_pairs} ]")
+
+
+if __name__ == '__main__':
+    dry_run = '--dry-run' in sys.argv
+    config_path = 'config.yaml'
+    config = load_config(config_path)
+    config_hash = calculate_file_hash(config_path)
+
+    try:
+        validate_bucket_pairs(config)
+        print("[ Bucket pairs to be synchronized: ]")
+        pairs = config['buckets']['pair']
+        for pair_name, pair_buckets in pairs.items():
+            print(f"[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
+        while True:
+            # Проверка изменения хэш суммы конфигурационного файла
+            new_config_hash = calculate_file_hash(config_path)
+            if new_config_hash != config_hash:
+                print("[ Configuration file changed, reloading... ]")
+                config = load_config(config_path)
                 validate_bucket_pairs(config)
-                print("[ Bucket pairs to be synchronized: ]")
-                pairs = config['buckets']['pair']
-                if not pairs:
-                    print("[ No valid bucket pairs to synchronize. ]")
-                for pair_name, pair_buckets in pairs.items():
-                    print(f"[ {pair_buckets[0]['bucket-name']} -> {pair_buckets[1]['bucket-name']} ]")
-                while True:
-                    # Проверка изменения хэш суммы конфигурационного файла
-                    new_config_hash = calculate_file_hash(config_path)
-                    if new_config_hash != config_hash:
-                        print("[ Configuration file changed, reloading... ]")
-                        config = load_config(config_path)
-                        validate_bucket_pairs(config)
-                        config_hash = new_config_hash
-                        print_config_info(config)  # Вывод информации о конфигурации
+                config_hash = new_config_hash
+                print_config_info(config)  # Вывод информации о конфигурации
 
-                    print("[ Starting synchronization cycle... ]")
-                    asyncio.run(sync_buckets(config, dry_run))
-                    print("[ Synchronization cycle completed. ]")
-                    time.sleep(config['sync']['interval'])
-            except Exception as e:
-                telegram_enabled = config['telegram'].get('enabled', True)
-                if 'telegram' in config and 'bot_token' in config['telegram'] and 'chat_id' in config['telegram']:
-                    send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], f"Error: {e}",
-                                          telegram_enabled)
-                print(f"[ Error: {e} ]")
+            print("[ Starting synchronization cycle... ]")
+            asyncio.run(sync_buckets(config, dry_run))
+            print("[ Synchronization cycle completed. ]")
+            time.sleep(config['sync']['interval'])
+    except Exception as e:
+        telegram_enabled = config['telegram'].get('enabled', True)
+        if 'telegram' in config and 'bot_token' in config['telegram'] and 'chat_id' in config['telegram']:
+            send_telegram_message(config['telegram']['bot_token'], config['telegram']['chat_id'], f"Error: {e}",
+                                  telegram_enabled)
+        print(f"[ Error: {e} ]")
