@@ -42,7 +42,7 @@ def validate_bucket_pairs(config):
                 raise ValueError(f"Bucket {bucket} in pair {pair_name} is missing required fields.")
         pair_count += 1
 
-    print(f"All bucket pairs are correctly specified. Total pairs found: {pair_count}")
+    print(f"[ All bucket pairs are correctly specified. Total pairs found: {pair_count} ]")
 
 
 # Проверяем существование бакета
@@ -88,7 +88,7 @@ async def sync_bucket_pair(session, source_bucket, target_bucket, check_exists, 
                            dry_run=False):
     # Проверка включена ли пара бакетов
     if not source_bucket.get('enabled', True) or not target_bucket.get('enabled', True):
-        return f"Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false"
+        return f"[ Skipping pair {source_bucket['bucket-name']} -> {target_bucket['bucket-name']} due to enabled set to false ]"
 
     source_endpoint = f"{source_bucket['endpoint-url']}:{source_bucket['port']}"
     target_endpoint = f"{target_bucket['endpoint-url']}:{target_bucket['port']}"
